@@ -18,7 +18,7 @@ import { Renderer } from './renderer';
 import { store, type Mode, type State, type Tab } from './state';
 import { applyCanvasTheme, applyTheme, getTheme, setTheme, type ThemeMode } from './theme';
 import { renderThumb } from './thumbs';
-import { appTemplate } from './ui';
+import { LN_ADDRESS, appTemplate } from './ui';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
 const $$ = <T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document) => [...root.querySelectorAll(sel)] as T[];
@@ -496,6 +496,80 @@ function closeHelp() {
   lastFocus?.focus?.();
 }
 
+// ---------- donate (frosted-glass popup) ----------
+let donateLastFocus: HTMLElement | null = null;
+let donateCloseTimer = 0;
+const donateOpen = () => !$('#donateModal').hidden;
+function openDonate() {
+  const m = $('#donateModal');
+  clearTimeout(donateCloseTimer);
+  donateLastFocus = document.activeElement as HTMLElement;
+  m.hidden = false;
+  document.body.classList.add('dn-lock');
+  void m.offsetWidth; // start the transition from the hidden state
+  m.classList.add('open');
+  $('#donateBtn').setAttribute('aria-expanded', 'true');
+  $('#donateClose').focus();
+}
+function closeDonate() {
+  const m = $('#donateModal');
+  if (m.hidden) return;
+  m.classList.remove('open');
+  document.body.classList.remove('dn-lock');
+  $('#donateBtn').setAttribute('aria-expanded', 'false');
+  donateCloseTimer = window.setTimeout(() => (m.hidden = true), 220);
+  (donateLastFocus ?? $('#donateBtn')).focus?.();
+}
+$('#donateBtn').addEventListener('click', openDonate);
+$('#donateClose').addEventListener('click', closeDonate);
+$('#donateModal [data-dn-close]').addEventListener('click', closeDonate);
+$('#donateModal').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    closeDonate();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  // focus trap
+  const f = $$<HTMLElement>('.dn-card button, .dn-card a[href]').filter((el) => el.offsetParent !== null);
+  const first = f[0];
+  const lastEl = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    lastEl.focus();
+  } else if (!e.shiftKey && document.activeElement === lastEl) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+$('#donateCopy').addEventListener('click', async () => {
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(LN_ADDRESS);
+    ok = true;
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = LN_ADDRESS;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+  }
+  if (ok) {
+    const b = $('#donateCopy');
+    b.classList.add('done');
+    window.setTimeout(() => b.classList.remove('done'), 1600);
+    toast(t('donate.copied'));
+  } else toast(LN_ADDRESS);
+});
+
 $$('#chips .chip').forEach((c) =>
   c.addEventListener('click', () => store.set({ category: c.dataset.cat as State['category'] })),
 );
@@ -657,6 +731,7 @@ $('#midiBtn').addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   const tgt = e.target as HTMLElement;
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(tgt.tagName);
+  if (donateOpen()) return; // the popup handles its own keys
   if (e.key === 'Escape' && !$('#helpModal').hidden) return closeHelp();
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === ' ' && tgt.tagName !== 'BUTTON') {

@@ -9,6 +9,14 @@ const es = {
   'lang.toggle': 'Idioma: Español — cambiar a English',
   'theme.toDark': 'Activar modo oscuro',
   'vol.label': 'Volumen',
+  'donate.label': 'Donate',
+  'donate.text': 'Donation powered by Lightning network',
+  'donate.copy': 'Copiar',
+  'donate.copyAria': 'Copiar dirección Lightning',
+  'donate.copied': 'Dirección copiada',
+  'donate.open': 'Abrir en la billetera',
+  'donate.qrAlt': 'Código QR de Lightning para donar',
+  'donate.addr': 'Dirección Lightning',
   'vol.mute': 'Silenciar',
   'vol.unmute': 'Activar sonido',
   'theme.toLight': 'Activar modo claro',
@@ -141,6 +149,14 @@ const en: Dict = {
   'lang.toggle': 'Language: English — switch to Español',
   'theme.toDark': 'Switch to dark mode',
   'vol.label': 'Volume',
+  'donate.label': 'Donate',
+  'donate.text': 'Donation powered by Lightning network',
+  'donate.copy': 'Copy',
+  'donate.copyAria': 'Copy Lightning address',
+  'donate.copied': 'Address copied',
+  'donate.open': 'Open in wallet',
+  'donate.qrAlt': 'Lightning QR code to donate',
+  'donate.addr': 'Lightning address',
   'vol.mute': 'Mute',
   'vol.unmute': 'Unmute',
   'theme.toLight': 'Switch to light mode',
@@ -279,5 +295,8 @@ export function applyI18n(root: ParentNode = document): void {
   });
   root.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
     el.setAttribute('aria-label', t(el.dataset.i18nAria as I18nKey));
+  });
+  root.querySelectorAll<HTMLImageElement>('[data-i18n-alt]').forEach((el) => {
+    el.alt = t(el.dataset.i18nAlt as I18nKey);
   });
 }
