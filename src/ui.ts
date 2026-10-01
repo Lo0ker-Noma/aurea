@@ -28,7 +28,7 @@ const presetOptions = () =>
   ).join('');
 
 /** Decoded from the donation QR code (lightning:<address>). */
-export const LN_ADDRESS = 'noblemoose21@primal.net';
+export const LN_ADDRESS = 'looker@lawallet.io';
 
 export function appTemplate(): string {
   return `
