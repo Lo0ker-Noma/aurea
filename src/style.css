@@ -27,6 +27,50 @@
   --hdr: 64px;
   --spec-line: #262c2e;
   --spec-range: rgba(1, 157, 201, 0.06);
+  --spec-bg: #fbfbf9;
+  --on-ink: #ffffff; /* text/icons on --ink filled elements */
+  --mark-bg: #262c2e;
+  --knob: #ffffff; /* slider & switch knobs */
+  --hdr-bg: rgba(247, 246, 242, 0.82);
+  --hdr-border: rgba(38, 44, 46, 0.06);
+  --body-glow: #fffdf6;
+  --body-end: #f1f5f6;
+  --float-bg: rgba(255, 255, 255, 0.92); /* tap hint pill */
+  --modal-text: #3a4346;
+  --backdrop: rgba(38, 44, 46, 0.25);
+  color-scheme: light;
+}
+
+/* ---- Page theme: dark (whole UI). Light above is the Neko-style base. ---- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #121516;
+  --surface: #1a1e20;
+  --surface-2: #22272a;
+  --line: #2b3134;
+  --line-strong: #3a4246;
+  --ink: #eceeec;
+  --ink-hover: #ffffff;
+  --muted: #9aa8ac;
+  --faint: #6e7c80;
+  --accent: #3bb8e0;
+  --accent-soft: rgba(59, 184, 224, 0.16);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 14px 34px -16px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 2px 8px rgba(0, 0, 0, 0.4), 0 30px 60px -20px rgba(0, 0, 0, 0.8);
+  --spec-line: #dfe5e5;
+  --spec-range: rgba(59, 184, 224, 0.09);
+  --spec-bg: #151819;
+  --on-ink: #15191a;
+  --mark-bg: #262d30;
+  --knob: #eceeec;
+  --hdr-bg: rgba(18, 21, 22, 0.8);
+  --hdr-border: rgba(255, 255, 255, 0.06);
+  --body-glow: #1b2022;
+  --body-end: #0e1112;
+  --float-bg: rgba(30, 35, 37, 0.92);
+  --modal-text: #c6cfd1;
+  --backdrop: rgba(0, 0, 0, 0.55);
 }
 
 /* ---- Canvas themes: every colour of the particle stage lives here -------- */
@@ -81,6 +125,16 @@
   --stage-border: var(--line);
 }
 
+:root[data-theme='dark'] {
+  --stage-border: var(--line);
+}
+/* light canvas on a dark page: slightly softened so it doesn't glare */
+:root[data-theme='dark'][data-canvas='light'] {
+  --cv-bg-inner: #f3f5f4;
+  --cv-bg-outer: #dde5e8;
+  --cv-thumb-bg: #e9eff1;
+}
+
 *,
 *::before,
 *::after {
@@ -93,7 +147,7 @@ html {
 body {
   margin: 0;
   min-height: 100svh;
-  background: radial-gradient(120% 60% at 50% -10%, #fffdf6 0%, rgba(255, 253, 246, 0) 60%), linear-gradient(180deg, var(--bg) 0%, #f1f5f6 100%);
+  background: radial-gradient(120% 60% at 50% -10%, var(--body-glow) 0%, transparent 60%), linear-gradient(180deg, var(--bg) 0%, var(--body-end) 100%);
   background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans);
@@ -139,10 +193,10 @@ svg {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(247, 246, 242, 0.82);
+  background: var(--hdr-bg);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border-bottom: 1px solid rgba(38, 44, 46, 0.06);
+  border-bottom: 1px solid var(--hdr-border);
 }
 .brand {
   display: flex;
@@ -211,6 +265,25 @@ svg {
   border-color: transparent;
   background: transparent;
 }
+.theme-btn .i-sun,
+:root[data-theme='dark'] .theme-btn .i-moon {
+  display: none;
+}
+:root[data-theme='dark'] .theme-btn .i-sun {
+  display: block;
+}
+.theme-btn svg {
+  transition: transform 0.4s ease;
+}
+.theme-btn:active svg {
+  transform: rotate(-30deg);
+}
+.lang-mini {
+  display: none;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
 .lang {
   display: flex;
   padding: 3px;
@@ -230,7 +303,7 @@ svg {
 }
 .lang button.on {
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 
 /* ---- Layout ------------------------------------------------------------------ */
@@ -355,10 +428,11 @@ body[data-tab='studio'] .readout {
   padding: 8px 16px 8px 8px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--float-bg);
   color: var(--ink);
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   backdrop-filter: blur(8px);
   transition: opacity 0.35s, transform 0.35s;
@@ -370,7 +444,7 @@ body[data-tab='studio'] .readout {
   display: grid;
   place-items: center;
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 .tap-ico svg {
   width: 14px;
@@ -609,7 +683,7 @@ body[data-tab='meditate'] .med-ov {
 }
 .btn.primary {
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 .btn.primary:hover {
   background: var(--ink-hover);
@@ -844,7 +918,7 @@ body[data-tab='meditate'] .med-ov {
   height: 20px;
   margin-top: -9px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   border: 1px solid var(--line-strong);
   box-shadow: 0 1px 4px rgba(38, 44, 46, 0.18);
 }
@@ -852,7 +926,7 @@ body[data-tab='meditate'] .med-ov {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   border: 1px solid var(--line-strong);
   box-shadow: 0 1px 4px rgba(38, 44, 46, 0.18);
 }
@@ -900,7 +974,7 @@ body[data-tab='meditate'] .med-ov {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--knob);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   transition: transform 0.2s;
 }
@@ -972,7 +1046,7 @@ body[data-tab='meditate'] .med-ov {
   margin-top: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #fbfbf9;
+  background: var(--spec-bg);
 }
 .midi-status {
   display: flex;
@@ -1010,7 +1084,7 @@ body[data-tab='meditate'] .med-ov {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(38, 44, 46, 0.25);
+  background: var(--backdrop);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   opacity: 0;
@@ -1052,7 +1126,7 @@ body[data-tab='meditate'] .med-ov {
 .modal-b {
   font-size: 15px;
   line-height: 1.6;
-  color: #3a4346;
+  color: var(--modal-text);
 }
 .modal-b h3 {
   margin: 22px 0 6px;
@@ -1092,7 +1166,7 @@ kbd {
   padding: 11px 18px;
   border-radius: var(--radius);
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
   font-size: 14px;
   opacity: 0;
   pointer-events: none;
@@ -1120,7 +1194,7 @@ kbd {
     padding: 2px;
   }
   .tab {
-    padding: 8px 7px;
+    padding: 8px 6px;
     font-size: 13px;
   }
   .hdr-r {
@@ -1131,12 +1205,10 @@ kbd {
     height: 32px;
   }
   .lang {
-    padding: 2px;
+    display: none;
   }
-  .lang button {
-    padding: 5px 5px;
-    font-size: 10.5px;
-    letter-spacing: 0.04em;
+  .lang-mini {
+    display: grid;
   }
   .ptitle h1 {
     font-size: 27px;
@@ -1164,11 +1236,15 @@ kbd {
 }
 @media (max-width: 370px) {
   .tab {
-    padding: 7px 5px;
+    padding: 7px 4px;
     font-size: 12px;
   }
-  .lang button {
-    padding: 5px 4px;
+  .hdr-r {
+    gap: 4px;
+  }
+  .icon-btn {
+    width: 30px;
+    height: 30px;
   }
   .brand .word {
     font-size: 20px;
@@ -1183,7 +1259,7 @@ kbd {
     z-index: 5;
     margin: -14px -14px 0;
     padding: 12px 14px 10px;
-    background: linear-gradient(180deg, var(--bg) 85%, rgba(247, 246, 242, 0));
+    background: linear-gradient(180deg, var(--bg) 85%, transparent);
   }
   body[data-tab='studio'] .stage {
     width: min(100%, 42svh);

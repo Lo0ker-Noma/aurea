@@ -2,7 +2,7 @@
 
 **Real-time cymatics & sacred geometry in the browser.** Áurea generates a pure tone with the Web Audio API and shows the *cymatic* figure it draws: thousands of particles migrate to the nodal lines of a vibrating Chladni plate, with the preset's sacred-geometry drawing overlaid. 100 % client-side — no accounts, no payments, no backend.
 
-> **ES ·** Áurea genera un tono en tiempo real en tu navegador y muestra la figura cimática que dibuja: miles de partículas se mueven hacia las líneas nodales de una placa de Chladni, con la geometría sagrada del preset superpuesta. Todo ocurre en tu dispositivo: sin cuentas, sin pagos, sin servidor. Interfaz en español e inglés.
+> **ES ·** Áurea genera un tono en tiempo real en tu navegador y muestra la figura cimática que dibuja: miles de partículas se mueven hacia las líneas nodales de una placa de Chladni, con la geometría sagrada del preset superpuesta. Todo ocurre en tu dispositivo: sin cuentas, sin pagos, sin servidor. Interfaz en español e inglés, con modo claro y oscuro.
 
 ## Features
 
@@ -15,7 +15,8 @@
   - **Analysis**: detected frequency and note, spectral peaks (AnalyserNode FFT 16k, local-maximum peak picking + parabolic interpolation, median smoothing), live spectrum, range and threshold. With mic/file the visualization follows the detected dominant frequency.
   - **Output**: export a PNG of the canvas (optional geometry and caption).
   - **MIDI**: Web MIDI note-on → frequency using the current reference tuning; status display and graceful fallback where Web MIDI is unsupported (Safari/iOS).
-- Help modal (bilingual), ES/EN toggle, keyboard shortcuts (`Space`, `1` `2` `3`, `?`).
+- **Dark mode** — page-wide light/dark switch (sun/moon button in the header, or `D`). Light (Neko-style) is the default; the choice is saved in `localStorage` (`aurea:theme`) and applied by an inline script before first paint, so there is no flash. The browser `theme-color` follows the theme.
+- Help modal (bilingual), ES/EN toggle, keyboard shortcuts (`Space`, `1` `2` `3`, `D`, `?`).
 - Persists language, last preset, tuning, mode and other preferences in `localStorage`.
 - Mobile-first & responsive, handles `devicePixelRatio`/resize, respects `prefers-reduced-motion`, audio only starts from a user gesture (iOS-safe).
 
@@ -33,7 +34,9 @@
 
 - **Frequency → modes.** A square plate's eigenfrequencies grow with *n² + m²*, so the overall wavenumber *K = √(n² + m²)* grows with log-frequency (compressed to stay legible); the *n : m* ratio and the symmetric/antisymmetric mix are smooth deterministic functions of log₂ f. The same frequency always yields the same figure, and sweeping the slider morphs it continuously (`src/field.ts`).
 - **Particles.** The field is sampled on a 128² grid; each particle takes a damped Newton step toward the nearest nodal line, is shaken in proportion to the local vibration amplitude and diffuses along the line (`src/particles.ts`). The CPU update is ~0.7 ms per frame for 18 000 particles on a laptop; positions are streamed into a single WebGL `POINTS` draw with additive (dark) or alpha (light) blending (`src/renderer.ts`). WebGL2 → WebGL1 → Canvas2D fallback. Particle count adapts to device and measured frame time.
-- **Theming.** UI tokens and all canvas colours are CSS custom properties in `src/style.css`. The canvas has two themes: `:root[data-canvas="dark"]` (default — a soft slate card with golden particles) and `:root[data-canvas="light"]` (white card with blue dots). Switch at runtime in *Studio → Shape → Canvas*, or change the default in `src/theme.ts` (`DEFAULT_CANVAS`) and `index.html` (`data-canvas`).
+- **Theming.** Two independent axes, both driven by CSS custom properties in `src/style.css`:
+  - **Page theme** (`<html data-theme="light|dark">`): all UI tokens (backgrounds, cards, text, borders, buttons, header, modal). API in `src/theme.ts` (`ThemeMode`, `getTheme`, `setTheme`, `applyTheme`); default `DEFAULT_THEME = 'light'` (`prefers-color-scheme` is intentionally ignored to keep the light Neko base).
+  - **Canvas theme**: all canvas colours. The canvas has two themes: `:root[data-canvas="dark"]` (default — a soft slate card with golden particles) and `:root[data-canvas="light"]` (white card with blue dots). Switch at runtime in *Studio → Shape → Canvas*, or change the default in `src/theme.ts` (`DEFAULT_CANVAS`) and `index.html` (`data-canvas`).
 
 ## Run locally
 

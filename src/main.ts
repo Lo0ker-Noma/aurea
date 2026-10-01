@@ -16,7 +16,7 @@ import { Particles, ratioFor } from './particles';
 import { GEOMETRIES, PRESETS, presetById, type Preset } from './presets';
 import { Renderer } from './renderer';
 import { store, type Mode, type State, type Tab } from './state';
-import { applyCanvasTheme } from './theme';
+import { applyCanvasTheme, applyTheme, getTheme, setTheme, type ThemeMode } from './theme';
 import { renderThumb } from './thumbs';
 import { appTemplate } from './ui';
 
@@ -31,6 +31,7 @@ const S = () => store.get();
 setLang(S().lang);
 document.documentElement.lang = S().lang;
 applyCanvasTheme(S().canvasTheme);
+applyTheme(getTheme()); // already set pre-paint by index.html; this syncs meta/color-scheme
 
 const app = $('#app');
 app.innerHTML = appTemplate();
@@ -294,6 +295,26 @@ function updateHeader() {
     b.setAttribute('aria-selected', String(on));
   });
   $$('.lang [data-lang]').forEach((b) => b.classList.toggle('on', b.dataset.lang === s.lang));
+  $('#langMini').textContent = s.lang.toUpperCase();
+  updateThemeBtn();
+}
+
+function updateThemeBtn() {
+  const dark = getTheme() === 'dark';
+  const b = $('#themeBtn');
+  const label = t(dark ? 'theme.toLight' : 'theme.toDark');
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  b.setAttribute('aria-pressed', String(dark));
+}
+
+function switchTheme(next: ThemeMode = getTheme() === 'dark' ? 'light' : 'dark') {
+  setTheme(next);
+  updateThemeBtn();
+  // canvas colours may depend on the page theme (e.g. softened light canvas on a dark page)
+  renderer.refreshTheme();
+  thumbCache.clear();
+  buildThumbs();
 }
 
 function updatePresetInfo() {
@@ -417,6 +438,8 @@ $$('.tab').forEach((b) =>
 );
 $$('.lang [data-lang]').forEach((b) => b.addEventListener('click', () => store.set({ lang: b.dataset.lang as State['lang'] })));
 $('#helpBtn').addEventListener('click', () => openHelp());
+$('#themeBtn').addEventListener('click', () => switchTheme());
+$('#langMini').addEventListener('click', () => store.set({ lang: S().lang === 'es' ? 'en' : 'es' }));
 $('#helpClose').addEventListener('click', () => closeHelp());
 $('#helpModal').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeHelp();
@@ -585,6 +608,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '2') store.set({ tab: 'meditate' });
   else if (e.key === '3') store.set({ tab: 'studio' });
   else if (e.key === '?') openHelp();
+  else if (e.key === 'd' || e.key === 'D') switchTheme();
 });
 
 document.addEventListener('visibilitychange', () => {

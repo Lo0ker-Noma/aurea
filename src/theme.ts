@@ -77,6 +77,51 @@ export function readCanvasColors(): CanvasColors {
 
 export function applyCanvasTheme(t: CanvasTheme) {
   document.documentElement.dataset.canvas = t;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', '#f7f6f2');
+}
+
+/* --------------------------------------------------------------------------
+ * Page theme (whole UI). Light = Neko-style base; dark = integrated with the
+ * dark canvas. Stored under its own localStorage key so the inline script in
+ * index.html can apply it before first paint (no flash).
+ * ------------------------------------------------------------------------ */
+export type ThemeMode = 'light' | 'dark';
+export const THEME_KEY = 'aurea:theme';
+export const DEFAULT_THEME: ThemeMode = 'light';
+/** Browser UI colour (address bar etc.) per page theme; keep in sync with --bg in style.css. */
+export const THEME_COLOR: Record<ThemeMode, string> = { light: '#f7f6f2', dark: '#121516' };
+
+const isMode = (v: unknown): v is ThemeMode => v === 'light' || v === 'dark';
+
+/** Saved preference, or null if the user never chose one. */
+export function savedTheme(): ThemeMode | null {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return isMode(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Current theme as applied on <html data-theme>. */
+export function getTheme(): ThemeMode {
+  const v = document.documentElement.dataset.theme;
+  return isMode(v) ? v : savedTheme() ?? DEFAULT_THEME;
+}
+
+/** Apply to the document (attribute, color-scheme, theme-color meta) without persisting. */
+export function applyTheme(t: ThemeMode): void {
+  const root = document.documentElement;
+  root.dataset.theme = t;
+  root.style.colorScheme = t;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[t]);
+}
+
+/** Apply and remember. */
+export function setTheme(t: ThemeMode): void {
+  applyTheme(t);
+  try {
+    localStorage.setItem(THEME_KEY, t);
+  } catch {
+    /* storage unavailable (private mode) — still applied for this session */
+  }
 }

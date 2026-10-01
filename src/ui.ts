@@ -30,10 +30,12 @@ export function appTemplate(): string {
     <button type="button" role="tab" class="tab" data-tab="studio" data-i18n="tab.studio"></button>
   </nav>
   <div class="hdr-r">
+    <button type="button" class="icon-btn theme-btn" id="themeBtn" aria-pressed="false"><span class="i-moon">${ICONS.moon}</span><span class="i-sun">${ICONS.sun}</span></button>
     <button type="button" class="icon-btn" id="helpBtn" data-i18n-aria="help.aria" data-i18n-title="help.aria">${ICONS.help}</button>
     <div class="lang" role="group" data-i18n-aria="lang.aria">
       <button type="button" data-lang="es">ES</button><button type="button" data-lang="en">EN</button>
     </div>
+    <button type="button" class="icon-btn lang-mini" id="langMini" data-i18n-aria="lang.toggle" data-i18n-title="lang.toggle"></button>
   </div>
 </header>
 

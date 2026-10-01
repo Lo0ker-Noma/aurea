@@ -14,8 +14,10 @@ export const ICONS = {
   midi: svg('<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7.5 6v7M12 6v7M16.5 6v7"/>'),
   mic: svg('<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5"/>'),
   file: svg('<path d="M14 3.5H7a1.5 1.5 0 0 0-1.5 1.5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3.5V8h4.5"/>'),
+  sun: svg('<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>'),
+  moon: svg('<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>'),
   arrow: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 };
 
 /** Brand mark: a small vesica / seed motif inside a rounded tile (echoes the favicon). */
-export const MARK = `<svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--ink)"/><g fill="none" stroke="var(--mark-line)" stroke-width="1.3"><circle cx="13.2" cy="16" r="6"/><circle cx="18.8" cy="16" r="6"/><circle cx="16" cy="16" r="10" stroke-opacity=".45"/></g></svg>`;
+export const MARK = `<svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--mark-bg)"/><g fill="none" stroke="var(--mark-line)" stroke-width="1.3"><circle cx="13.2" cy="16" r="6"/><circle cx="18.8" cy="16" r="6"/><circle cx="16" cy="16" r="10" stroke-opacity=".45"/></g></svg>`;

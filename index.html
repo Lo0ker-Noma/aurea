@@ -1,13 +1,31 @@
 <!doctype html>
-<html lang="es" data-canvas="dark">
+<html lang="es" data-canvas="dark" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f6f2" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Áurea — cimática en tiempo real: frecuencias, patrones de Chladni y geometría sagrada en tu navegador. Real-time cymatics, Chladni patterns and sacred geometry in your browser." />
     <meta property="og:title" content="Áurea — Cimática y geometría sagrada" />
     <meta property="og:description" content="Escucha una frecuencia y mira la forma que dibuja. / Hear a frequency and see the shape it draws." />
+    <script>
+      // Apply saved page theme (+ canvas theme) before first paint to avoid a flash.
+      // Default is light (Neko-style base); prefers-color-scheme is intentionally not used.
+      (function () {
+        var d = document.documentElement, t = 'light', c = 'dark';
+        try {
+          var s = localStorage.getItem('aurea:theme');
+          if (s === 'dark' || s === 'light') t = s;
+          var st = JSON.parse(localStorage.getItem('aurea:v1') || '{}');
+          if (st.canvasTheme === 'light' || st.canvasTheme === 'dark') c = st.canvasTheme;
+        } catch (e) {}
+        d.setAttribute('data-theme', t);
+        d.setAttribute('data-canvas', c);
+        d.style.colorScheme = t;
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', t === 'dark' ? '#121516' : '#f7f6f2');
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <title>Áurea — Cimática y geometría sagrada · Cymatics &amp; sacred geometry</title>
