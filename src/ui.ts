@@ -12,6 +12,13 @@ const section = (key: string, body: string, extra = '') =>
 const range = (id: string, min: number, max: number, step: number) =>
   `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}">`;
 
+const volRow = (id: string) =>
+  `<div class="vol-row" id="${id}">
+    <button type="button" class="icon-btn ghost vol-mute" aria-pressed="false"></button>
+    <input type="range" class="range vol vol-range" min="0" max="1" step="0.01" data-i18n-aria="vol.label">
+    <span class="mono vol-val"></span>
+  </div>`;
+
 const presetOptions = () =>
   CATEGORIES.map(
     (c) =>
@@ -23,7 +30,7 @@ const presetOptions = () =>
 export function appTemplate(): string {
   return `
 <header class="hdr">
-  <a class="brand" href="./" aria-label="Áurea">${MARK}<span class="word">Áurea</span></a>
+  <a class="brand" href="./" aria-label="Áurea by Looker">${MARK}<span class="brand-text"><span class="word">Áurea</span><span class="by">by Looker</span></span></a>
   <nav class="tabs" role="tablist">
     <button type="button" role="tab" class="tab" data-tab="explore" data-i18n="tab.explore"></button>
     <button type="button" role="tab" class="tab" data-tab="meditate" data-i18n="tab.meditate"></button>
@@ -69,6 +76,7 @@ export function appTemplate(): string {
       ${seg('modeSeg', [['chladni', 'mode.chladni'], ['water', 'mode.water'], ['mandala', 'mode.mandala'], ['xy', 'mode.xy']], 'mode')}
       <button type="button" class="btn primary play" id="playBtn"><span class="ico"></span><span class="lbl"></span></button>
     </div>
+    ${volRow('volExplore')}
   </section>
 
   <!-- MEDITATE -->
@@ -85,6 +93,7 @@ export function appTemplate(): string {
       </div>
     </div>
     <button type="button" class="btn primary wide" id="medBtn"></button>
+    ${volRow('volMeditate')}
     <p class="hint" data-i18n="med.hint"></p>
   </section>
 
@@ -133,8 +142,8 @@ export function appTemplate(): string {
         </div>
         <div class="lab-row"><span data-i18n="st.waveform"></span></div>
         ${seg('waveSeg', [['sine', 'st.sine'], ['soft', 'st.soft'], ['triangle', 'st.triangle']], 'wave')}
-        <div class="lab-row"><span data-i18n="st.volume"></span><span class="mono val" id="volVal"></span></div>
-        ${range('volRange', 0, 1, 0.01)}`)}
+        <div class="lab-row"><span data-i18n="st.volume"></span></div>
+        ${volRow('volStudio')}`)}
     </div>
 
     <div class="pane" data-pane="analysis">

@@ -6,6 +6,8 @@ export interface Peak {
 }
 
 type AC = typeof AudioContext;
+/** Tone peak level before the master volume (v² curve): 0.5 × 0.6² ≈ the old default loudness. */
+const TONE_LEVEL = 0.5;
 
 /**
  * Web Audio engine: a tone generator (oscillator → gain → master), microphone and
@@ -29,6 +31,14 @@ export class AudioEngine {
   freq = 440;
   private waveform: Waveform = 'sine';
   private volume = 0.6;
+  private muted = false;
+  /** true while the app intends audio to be audible (used to auto-resume after OS suspensions) */
+  wantRunning = false;
+  /** 'element' = Web Audio → MediaStream → <audio> (enables Media Session/lock-screen on Android/desktop); 'direct' = ctx.destination */
+  route: 'direct' | 'element' = 'direct';
+  private outEl: HTMLAudioElement | null = null;
+  private bellNodes: OscillatorNode[] = [];
+  private fadeInEnd = 0;
   toneOn = false;
   source: Source = 'tone';
 
@@ -44,8 +54,10 @@ export class AudioEngine {
       const ctx = new Ctor({ latencyHint: 'interactive' });
       this.ctx = ctx;
       this.master = ctx.createGain();
-      this.master.gain.value = this.volume;
+      this.master.gain.value = this.targetGain();
       this.master.connect(ctx.destination);
+      this.setupOutputRoute(ctx);
+      ctx.addEventListener('statechange', () => this.onStateChange?.(ctx.state));
       this.toneGain = ctx.createGain();
       this.toneGain.gain.value = 0;
       this.toneGain.connect(this.master);
@@ -67,6 +79,73 @@ export class AudioEngine {
     return this.ctx;
   }
 
+  onStateChange: ((state: string) => void) | null = null;
+
+  /**
+   * Background playback & Media Session: Chrome (Android/desktop) only shows media
+   * controls for an HTMLMediaElement, so the master bus is also streamed into a
+   * hidden <audio> element. If it starts (we are inside the user gesture) the
+   * direct connection is dropped; otherwise we keep ctx.destination.
+   * iOS Safari uses the direct route (+ navigator.audioSession = 'playback').
+   */
+  private setupOutputRoute(ctx: AudioContext) {
+    const nav = navigator as unknown as { audioSession?: { type: string } };
+    try {
+      if (nav.audioSession) nav.audioSession.type = 'playback';
+    } catch {
+      /* ignore */
+    }
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS || typeof ctx.createMediaStreamDestination !== 'function' || !('srcObject' in HTMLMediaElement.prototype)) return;
+    try {
+      const dest = ctx.createMediaStreamDestination();
+      this.master.connect(dest);
+      const el = new Audio();
+      el.srcObject = dest.stream;
+      el.setAttribute('playsinline', '');
+      this.outEl = el;
+      el.play()
+        .then(() => {
+          // the element now carries the audio: drop the direct path to avoid doubling
+          try {
+            this.master.disconnect(ctx.destination);
+          } catch {
+            /* ignore */
+          }
+          this.route = 'element';
+        })
+        .catch(() => {
+          this.master.disconnect(dest);
+          this.outEl = null;
+          this.route = 'direct';
+        });
+    } catch {
+      this.route = 'direct';
+    }
+  }
+
+  /** Resume a suspended/interrupted context (call on visibility/focus/tap). */
+  kick() {
+    const ctx = this.ctx;
+    if (!ctx || !this.wantRunning) return;
+    if (ctx.state !== 'running') void ctx.resume().catch(() => undefined);
+    if (this.outEl && this.outEl.paused) void this.outEl.play().catch(() => undefined);
+  }
+
+  /** Perceptual volume curve: gain = v² (fine control at low, background levels). */
+  static curve(v: number): number {
+    const c = Math.max(0, Math.min(1, v));
+    return c * c;
+  }
+
+  private targetGain(): number {
+    return this.muted ? 0 : AudioEngine.curve(this.volume);
+  }
+
+  get masterGain(): number {
+    return this.ctx ? this.master.gain.value : this.targetGain();
+  }
+
   get sampleRate(): number {
     return this.ctx?.sampleRate ?? 48000;
   }
@@ -86,9 +165,17 @@ export class AudioEngine {
     if (this.osc) this.applyWave(this.osc);
   }
 
-  setVolume(v: number) {
+  /** Set volume (0..1, linear slider position) and mute; smooth ramp, no clicks. */
+  setVolume(v: number, muted = this.muted) {
     this.volume = v;
-    if (this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    this.muted = muted;
+    if (this.ctx) {
+      const g = this.master.gain;
+      const now = this.ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.setTargetAtTime(this.targetGain(), now, 0.04);
+    }
   }
 
   setFreq(f: number, glide = 0.04) {
@@ -114,8 +201,39 @@ export class AudioEngine {
     const g = this.toneGain.gain;
     g.cancelScheduledValues(now);
     g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(0.32, now + fade);
+    g.linearRampToValueAtTime(TONE_LEVEL, now + fade);
+    this.fadeInEnd = now + fade;
     this.toneOn = true;
+  }
+
+  /**
+   * Schedule the end of a meditation on the audio clock (fade-out + bell), so it
+   * happens on time even when the tab is hidden and timers/rAF are throttled.
+   */
+  scheduleSessionEnd(inSec: number, fade = 4) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    this.cancelSessionEnd();
+    const now = ctx.currentTime;
+    const end = now + Math.max(0.5, inSec);
+    const g = this.toneGain.gain;
+    const t0 = Math.max(end - fade, this.fadeInEnd, now);
+    g.cancelScheduledValues(Math.max(now, this.fadeInEnd));
+    g.setValueAtTime(TONE_LEVEL, t0);
+    g.linearRampToValueAtTime(0, Math.max(end, t0 + 0.05));
+    this.bellNodes = this.bell(end + 0.4);
+  }
+
+  cancelSessionEnd() {
+    for (const o of this.bellNodes) {
+      try {
+        o.stop();
+        o.disconnect();
+      } catch {
+        /* not started yet or already stopped */
+      }
+    }
+    this.bellNodes = [];
   }
 
   stopTone(fade = 0.15) {
@@ -135,11 +253,12 @@ export class AudioEngine {
     this.toneOn = false;
   }
 
-  /** Short soft bell, used at the end of a meditation. */
-  bell() {
+  /** Short soft bell, used at the end of a meditation (optionally at a future ctx time). */
+  bell(at?: number): OscillatorNode[] {
     const ctx = this.ctx;
-    if (!ctx) return;
-    const now = ctx.currentTime;
+    if (!ctx) return [];
+    const now = Math.max(ctx.currentTime, at ?? 0);
+    const nodes: OscillatorNode[] = [];
     for (const [mul, amp] of [[1, 0.25], [2.76, 0.08], [5.4, 0.03]] as const) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -150,7 +269,9 @@ export class AudioEngine {
       o.connect(g).connect(this.master);
       o.start(now);
       o.stop(now + 4.1);
+      nodes.push(o);
     }
+    return nodes;
   }
 
   async startMic(): Promise<boolean> {

@@ -8,6 +8,9 @@ const es = {
   'lang.aria': 'Idioma',
   'lang.toggle': 'Idioma: Español — cambiar a English',
   'theme.toDark': 'Activar modo oscuro',
+  'vol.label': 'Volumen',
+  'vol.mute': 'Silenciar',
+  'vol.unmute': 'Activar sonido',
   'theme.toLight': 'Activar modo claro',
   'cat.geo': 'Geometría sagrada',
   'cat.solfeggio': 'Solfeggio',
@@ -123,7 +126,7 @@ const es = {
 <p><strong>Forma</strong>: modo, geometría y partículas. <strong>Sonido</strong>: afinación La = 440/432, fuente (tono, micrófono o archivo), frecuencia exacta y multiplicador áureo ×φ / ÷φ. <strong>Análisis</strong>: frecuencia detectada, nota y picos del espectro (FFT). <strong>Salida</strong>: descarga una imagen PNG. <strong>MIDI</strong>: toca notas en un teclado MIDI para fijar la frecuencia.</p>
 <h3>Privacidad y uso</h3>
 <p>Todo ocurre en tu dispositivo: sin cuentas, sin servidor. El micrófono solo se usa si lo activas y nunca sale del navegador. Usa auriculares a volumen moderado. Áurea es una herramienta artística y de relajación, no un tratamiento médico.</p>
-<p>El botón de luna/sol de la cabecera cambia toda la interfaz a modo oscuro o claro; tu elección se recuerda.</p>
+<p>Usa la barra de volumen (junto a Reproducir) para dejar el tono suave de fondo mientras haces otras cosas; sigue sonando aunque cambies de pestaña. El botón de luna/sol de la cabecera cambia toda la interfaz a modo oscuro o claro; tu elección se recuerda.</p>
 <p class="muted">Atajos: <kbd>Espacio</kbd> reproducir/pausar · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> pestañas · <kbd>D</kbd> modo oscuro · <kbd>?</kbd> ayuda</p>`,
 };
 
@@ -137,6 +140,9 @@ const en: Dict = {
   'lang.aria': 'Language',
   'lang.toggle': 'Language: English — switch to Español',
   'theme.toDark': 'Switch to dark mode',
+  'vol.label': 'Volume',
+  'vol.mute': 'Mute',
+  'vol.unmute': 'Unmute',
   'theme.toLight': 'Switch to light mode',
   'cat.geo': 'Sacred geometry',
   'cat.solfeggio': 'Solfeggio',
@@ -249,7 +255,7 @@ const en: Dict = {
 <p><strong>Shape</strong>: mode, geometry and particles. <strong>Sound</strong>: A = 440/432 tuning, source (tone, microphone or file), exact frequency and the golden multiplier ×φ / ÷φ. <strong>Analysis</strong>: detected frequency, note and spectral peaks (FFT). <strong>Output</strong>: download a PNG image. <strong>MIDI</strong>: play notes on a MIDI keyboard to set the frequency.</p>
 <h3>Privacy &amp; use</h3>
 <p>Everything runs on your device: no accounts, no server. The microphone is only used if you turn it on and never leaves the browser. Use headphones at a moderate volume. Áurea is an artistic and relaxation tool, not a medical treatment.</p>
-<p>The moon/sun button in the header switches the whole interface to dark or light mode; your choice is remembered.</p>
+<p>Use the volume bar (next to Play) to keep the tone softly in the background while you do other things; it keeps playing when you switch tabs. The moon/sun button in the header switches the whole interface to dark or light mode; your choice is remembered.</p>
 <p class="muted">Shortcuts: <kbd>Space</kbd> play/pause · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> tabs · <kbd>D</kbd> dark mode · <kbd>?</kbd> help</p>`,
 };
 

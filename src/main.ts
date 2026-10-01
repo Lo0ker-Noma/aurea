@@ -42,6 +42,7 @@ const renderer = new Renderer($('#stage'), MAX);
 const field = new Field(128);
 const particles = new Particles(MAX, targetCount());
 const audio = new AudioEngine();
+audio.setVolume(S().volume, S().muted); // stored volume applies as soon as the context exists
 const midi = new Midi();
 
 // ---------- helpers ----------
@@ -166,15 +167,17 @@ function startMeditation() {
   medStart = performance.now();
   medEnd = medStart + S().medDuration * 60000;
   medDone = false;
+  // fade-out + bell live on the audio clock, so they're on time even in a hidden tab
+  audio.scheduleSessionEnd(S().medDuration * 60);
   store.set({ medRunning: true, playing: true });
 }
 
 function stopMeditation(done: boolean) {
-  audio.stopTone(done ? 4 : 2.5);
+  if (!done) audio.cancelSessionEnd(); // when done, the bell is already scheduled
+  audio.stopTone(done ? 0.3 : 2.5);
   medDone = done;
   store.set({ medRunning: false, playing: false });
   if (done) {
-    window.setTimeout(() => audio.bell(), 600);
     window.setTimeout(() => {
       medDone = false;
     }, 8000);
@@ -360,8 +363,7 @@ function updateStudioValues() {
   if (document.activeElement !== fr) fr.value = String(freqToSlider(s.freq));
   const fn = $<HTMLInputElement>('#freqNum');
   if (document.activeElement !== fn) fn.value = s.freq.toFixed(2);
-  $<HTMLInputElement>('#volRange').value = String(s.volume);
-  $('#volVal').textContent = `${Math.round(s.volume * 100)}%`;
+  updateVolumeUI();
   $<HTMLInputElement>('#sizeRange').value = String(s.pointSize);
   $('#sizeVal').textContent = `${s.pointSize.toFixed(2)}×`;
   $<HTMLInputElement>('#loRange').value = String(freqToSlider(s.rangeLo, 20, 8000));
@@ -386,6 +388,40 @@ function updateStudioValues() {
     .forEach((c) => c.classList.toggle('on', c.dataset.cat === s.category));
   $('.panel[data-view="explore"]').classList.toggle('collapsed', s.panelCollapsed);
   $('#collapseBtn').setAttribute('aria-expanded', String(!s.panelCollapsed));
+}
+
+// ---------- volume ----------
+function volIcon(v: number, muted: boolean): string {
+  if (muted || v <= 0) return ICONS.volMute;
+  return v < 0.4 ? ICONS.volLow : ICONS.volHigh;
+}
+function updateVolumeUI() {
+  const s = S();
+  const pct = Math.round(s.volume * 100);
+  const silent = s.muted || s.volume <= 0;
+  const txt = s.muted ? `${t('vol.label')}: ${pct}% (${t('vol.mute')})` : `${t('vol.label')}: ${pct}%`;
+  $$('.vol-row').forEach((row) => {
+    row.classList.toggle('muted', silent);
+    const r = $<HTMLInputElement>('.vol-range', row);
+    if (document.activeElement !== r || r.value !== String(s.volume)) r.value = String(s.volume);
+    r.style.setProperty('--p', `${s.muted ? 0 : pct}%`);
+    r.setAttribute('aria-valuetext', txt);
+    $('.vol-val', row).textContent = `${pct}%`;
+    const b = $<HTMLButtonElement>('.vol-mute', row);
+    const icon = volIcon(s.volume, s.muted);
+    if (b.dataset.icon !== icon) {
+      b.innerHTML = icon;
+      b.dataset.icon = icon;
+    }
+    b.setAttribute('aria-pressed', String(s.muted));
+    const lbl = t(silent ? 'vol.unmute' : 'vol.mute');
+    b.setAttribute('aria-label', lbl);
+    b.title = lbl;
+  });
+}
+function setVolume(v: number, muted: boolean) {
+  store.set({ volume: clamp(v, 0, 1), muted });
+  audio.setVolume(S().volume, S().muted);
 }
 
 function updateMidiUI() {
@@ -492,7 +528,10 @@ $<HTMLSelectElement>('#medPreset').addEventListener('change', (e) => selectPrese
 $$('#durSeg [data-dur]').forEach((b) =>
   b.addEventListener('click', () => {
     store.set({ medDuration: Number(b.dataset.dur) as State['medDuration'] });
-    if (S().medRunning) medEnd = medStart + S().medDuration * 60000;
+    if (S().medRunning) {
+      medEnd = medStart + S().medDuration * 60000;
+      audio.scheduleSessionEnd((medEnd - performance.now()) / 1000);
+    }
   }),
 );
 $('#medBtn').addEventListener('click', () => (S().medRunning ? stopMeditation(false) : startMeditation()));
@@ -536,10 +575,6 @@ $$('#waveSeg [data-wave]').forEach((b) =>
     audio.setWaveform(S().waveform);
   }),
 );
-$<HTMLInputElement>('#volRange').addEventListener('input', (e) => {
-  store.set({ volume: Number((e.target as HTMLInputElement).value) });
-  audio.setVolume(S().volume);
-});
 $<HTMLInputElement>('#loRange').addEventListener('input', (e) => {
   const v = sliderToFreq(Number((e.target as HTMLInputElement).value), 20, 8000);
   store.set({ rangeLo: Math.min(v, S().rangeHi * 0.9) });
@@ -570,6 +605,30 @@ $('#exportBtn').addEventListener('click', () => {
   a.click();
   a.remove();
   toast(t('st.exported'));
+});
+
+// volume (Explore, Meditate and Studio > Sound share one store value)
+$$<HTMLInputElement>('.vol-range').forEach((r) =>
+  r.addEventListener('input', () => setVolume(Number(r.value), false)), // moving the slider unmutes
+);
+$$<HTMLButtonElement>('.vol-mute').forEach((b) =>
+  b.addEventListener('click', () => {
+    const s = S();
+    if (s.muted) setVolume(s.volume > 0 ? s.volume : 0.3, false);
+    else if (s.volume <= 0) setVolume(0.3, false);
+    else setVolume(s.volume, true);
+  }),
+);
+window.addEventListener('storage', (e) => {
+  // another tab changed the volume: keep in sync
+  if (e.key === 'aurea:v1') {
+    try {
+      const o = JSON.parse(e.newValue || '{}');
+      if (typeof o.volume === 'number' && (o.volume !== S().volume || !!o.muted !== S().muted)) setVolume(o.volume, !!o.muted);
+    } catch {
+      /* ignore */
+    }
+  }
 });
 
 // MIDI
@@ -611,9 +670,74 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'd' || e.key === 'D') switchTheme();
 });
 
+// ---------- background playback ----------
+// Never pause when hidden / blurred. If the OS suspends or interrupts the context
+// (phone call, other app, lock screen), resume on the next visibility/focus/tap.
+const kick = () => audio.kick();
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && audio.ctx?.state === 'suspended' && S().playing) void audio.ctx.resume();
+  if (!document.hidden) kick();
 });
+window.addEventListener('focus', kick);
+window.addEventListener('pageshow', kick);
+for (const ev of ['pointerdown', 'touchend', 'keydown'] as const) window.addEventListener(ev, kick, { capture: true, passive: true });
+audio.onStateChange = (state) => {
+  if (state !== 'running' && audio.wantRunning && !document.hidden) kick();
+  updateMediaSession();
+};
+
+// keep the meditation UI honest even while rAF is paused in a hidden tab
+window.setInterval(() => {
+  if (S().medRunning && performance.now() >= medEnd) stopMeditation(true);
+}, 1000);
+
+// ---------- Media Session (lock screen / notification controls) ----------
+const ms = 'mediaSession' in navigator ? navigator.mediaSession : null;
+let msKey = '';
+function updateMediaSession() {
+  if (!ms) return;
+  const s = S();
+  const p = preset();
+  const key = `${p.id}|${s.freq}|${s.lang}|${s.source}`;
+  if (key !== msKey && typeof MediaMetadata !== 'undefined') {
+    msKey = key;
+    const name = s.source === 'tone' ? `${presetName(p)} · ${hz(s.freq)}` : s.source === 'file' ? t('st.file') : t('st.mic');
+    try {
+      ms.metadata = new MediaMetadata({
+        title: name,
+        artist: 'Áurea by Looker',
+        album: presetName(p),
+        artwork: [
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        ],
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+  ms.playbackState = s.playing ? 'playing' : audio.ctx ? 'paused' : 'none';
+}
+if (ms) {
+  const set = (a: MediaSessionAction, h: MediaSessionActionHandler) => {
+    try {
+      ms.setActionHandler(a, h);
+    } catch {
+      /* action unsupported */
+    }
+  };
+  // these only fire after the user has started audio at least once (no autoplay)
+  set('play', () => {
+    if (S().playing) return;
+    if (S().tab === 'meditate') startMeditation();
+    else startPlayback();
+  });
+  set('pause', () => {
+    if (S().playing) stopPlayback();
+  });
+  set('stop', () => {
+    if (S().playing) stopPlayback();
+  });
+}
 
 // ---------- store reactions ----------
 store.on((s, ch) => {
@@ -637,6 +761,8 @@ store.on((s, ch) => {
   if (['playing', 'medRunning', 'lang'].some((k) => ch.has(k as keyof State))) updatePlayUI();
   if (['source', 'playing', 'lang'].some((k) => ch.has(k as keyof State))) updateSourceUI();
   if (ch.has('lang')) updateMidiUI();
+  if (ch.has('playing')) audio.wantRunning = s.playing;
+  if (['playing', 'presetId', 'freq', 'lang', 'source'].some((k) => ch.has(k as keyof State))) updateMediaSession();
   updateStudioValues();
   if (['mode', 'showRings', 'presetId', 'overlay', 'tab'].some((k) => ch.has(k as keyof State))) refreshCanvasStatic();
   if (ch.has('pointSize')) renderer.pointScale = s.pointSize;
@@ -867,6 +993,19 @@ requestAnimationFrame(frame);
       particles.stepField(field, 1, 1, mode === 'mandala', 1);
     }
     return { mode, count: particles.count, msPerStep: (performance.now() - t0) / steps };
+  },
+  audio() {
+    return {
+      state: audio.ctx?.state ?? 'none',
+      masterGain: audio.masterGain,
+      target: AudioEngine.curve(S().volume) * (S().muted ? 0 : 1),
+      volume: S().volume,
+      muted: S().muted,
+      route: audio.route,
+      wantRunning: audio.wantRunning,
+      playing: S().playing,
+      mediaSession: ms ? { state: ms.playbackState, title: ms.metadata?.title, artist: ms.metadata?.artist, album: ms.metadata?.album } : null,
+    };
   },
   sample() {
     return { pos: Array.from(particles.pos.slice(0, 6)), br: Array.from(particles.bright.slice(0, 3)), px: renderer.px, f: Array.from(field.f.slice(0, 3)) };

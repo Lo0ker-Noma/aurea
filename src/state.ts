@@ -27,6 +27,7 @@ export interface State {
   density: Density;
   pointSize: number;
   volume: number;
+  muted: boolean;
   waveform: Waveform;
   studioSub: StudioSub;
   medDuration: 5 | 10 | 20;
@@ -43,7 +44,7 @@ export interface State {
 const KEY = 'aurea:v1';
 const PERSIST: (keyof State)[] = [
   'lang', 'presetId', 'category', 'mode', 'freq', 'tuning', 'overlay', 'showRings', 'density',
-  'pointSize', 'volume', 'waveform', 'medDuration', 'rangeLo', 'rangeHi', 'sensitivity', 'panelCollapsed', 'studioSub',
+  'pointSize', 'volume', 'muted', 'waveform', 'medDuration', 'rangeLo', 'rangeHi', 'sensitivity', 'panelCollapsed', 'studioSub',
   'exportGeo', 'exportCaption', 'canvasTheme',
 ];
 
@@ -65,6 +66,7 @@ function defaults(): State {
     density: 'auto',
     pointSize: 1,
     volume: 0.6,
+    muted: false,
     waveform: 'sine',
     studioSub: 'sound',
     medDuration: 5,
@@ -96,6 +98,7 @@ function load(): State {
   if (s.lang !== 'es' && s.lang !== 'en') s.lang = 'es';
   if (s.tuning !== 440 && s.tuning !== 432) s.tuning = 440;
   if (![5, 10, 20].includes(s.medDuration)) s.medDuration = 5;
+  if (!isFinite(s.volume) || s.volume < 0 || s.volume > 1) s.volume = 0.6;
   if (s.canvasTheme !== 'dark' && s.canvasTheme !== 'light') s.canvasTheme = DEFAULT_CANVAS;
   if (!isFinite(s.freq) || s.freq < 20 || s.freq > 4000) s.freq = presetById(s.presetId).freq;
   s.presetId = presetById(s.presetId).id;
@@ -132,16 +135,26 @@ class Store {
 
   private scheduleSave() {
     clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
-      try {
-        const out: Record<string, unknown> = {};
-        for (const k of PERSIST) out[k] = this.s[k];
-        localStorage.setItem(KEY, JSON.stringify(out));
-      } catch {
-        /* storage may be unavailable (private mode) */
-      }
-    }, 250);
+    this.saveTimer = window.setTimeout(() => this.flush(), 250);
+  }
+
+  /** Write pending changes now (also on pagehide / tab hidden so nothing is lost). */
+  flush() {
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = 0;
+    try {
+      const out: Record<string, unknown> = {};
+      for (const k of PERSIST) out[k] = this.s[k];
+      localStorage.setItem(KEY, JSON.stringify(out));
+    } catch {
+      /* storage may be unavailable (private mode) */
+    }
   }
 }
 
 export const store = new Store();
+window.addEventListener('pagehide', () => store.flush());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) store.flush();
+});
