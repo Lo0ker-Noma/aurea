@@ -27,7 +27,7 @@ const presetOptions = () =>
         .join('')}</optgroup>`,
   ).join('');
 
-/** Decoded from the donation QR code (lightning:<address>). */
+/** Lightning address (forwards to noblemoose21@primal.net); public/donate-qr.svg encodes lightning:<address>. */
 export const LN_ADDRESS = 'looker@lawallet.io';
 
 export function appTemplate(): string {
@@ -196,7 +196,7 @@ export function appTemplate(): string {
     <button type="button" class="dn-x" id="donateClose" data-i18n-aria="help.close" data-i18n-title="help.close">${ICONS.close}</button>
     <div class="dn-bolt" aria-hidden="true">${ICONS.bolt}</div>
     <h2 class="serif dn-title" id="dnTitle" data-i18n="donate.label"></h2>
-    <div class="dn-qr"><img src="/donate-qr.png" width="640" height="640" data-i18n-alt="donate.qrAlt" alt="" decoding="async"></div>
+    <div class="dn-qr"><img src="/donate-qr.svg" width="640" height="640" data-i18n-alt="donate.qrAlt" alt="" decoding="async"></div>
     <p class="dn-text" id="dnText" data-i18n="donate.text"></p>
     <div class="dn-addr" role="group" data-i18n-aria="donate.addr">
       <span class="mono dn-addr-txt" title="${LN_ADDRESS}"><span class="a1">${LN_ADDRESS.slice(0, -8)}</span><span class="a2">${LN_ADDRESS.slice(-8)}</span></span>
