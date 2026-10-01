@@ -19,6 +19,24 @@ const volRow = (id: string) =>
     <span class="mono vol-val"></span>
   </div>`;
 
+/** Shared "Continuous / Timer" block (Meditate and Studio use the same markup + logic). */
+const sessionBlock = (scope: 'meditate' | 'studio') =>
+  `<div class="sess" data-scope="${scope}">
+    <div class="seg sess-mode" role="group" data-i18n-aria="sess.mode">
+      <button type="button" data-smode="continuous" data-i18n="sess.continuous"></button>
+      <button type="button" data-smode="timer" data-i18n="sess.timer"></button>
+    </div>
+    <div class="sess-timer">
+      <div class="seg sess-dur" role="group" data-i18n-aria="med.duration">
+        ${[5, 10, 20].map((d) => `<button type="button" data-sdur="${d}">${d} <span data-i18n="med.min"></span></button>`).join('')}
+      </div>
+      <div class="sess-row">
+        <span class="sess-clock mono" role="timer" data-i18n-aria="sess.left"></span>
+        <button type="button" class="sess-cancel" data-i18n="sess.cancel"></button>
+      </div>
+    </div>
+  </div>`;
+
 const presetOptions = () =>
   CATEGORIES.map(
     (c) =>
@@ -55,11 +73,12 @@ export function appTemplate(): string {
     <div class="stage" id="stage">
       <div class="readout mono" id="readout" aria-live="off"></div>
       <button type="button" class="tap-hint" id="tapHint"><span class="tap-ico">${ICONS.play}</span><span data-i18n="tapToListen"></span></button>
-      <div class="med-ov" id="medOv" aria-live="polite">
+      <div class="med-ov" id="medOv" aria-live="off">
         <div class="med-ring" id="medRing"></div>
         <div class="med-txt" id="medTxt"></div>
         <div class="med-time mono" id="medTime"></div>
       </div>
+      <div class="med-hint" id="medHint" role="status"><span class="med-hint-dot" aria-hidden="true"></span><span id="medHintTxt"></span></div>
     </div>
   </div>
 
@@ -91,11 +110,7 @@ export function appTemplate(): string {
     <label class="field"><span class="lab" data-i18n="med.tone"></span>
       <span class="select"><select id="medPreset">${presetOptions()}</select></span>
     </label>
-    <div class="field"><span class="lab" data-i18n="med.duration"></span>
-      <div class="seg" id="durSeg" role="group">
-        ${[5, 10, 20].map((d) => `<button type="button" data-dur="${d}">${d} <span data-i18n="med.min"></span></button>`).join('')}
-      </div>
-    </div>
+    <div class="field"><span class="lab" data-i18n="sess.title"></span>${sessionBlock('meditate')}</div>
     <button type="button" class="btn primary wide" id="medBtn"></button>
     ${volRow('volMeditate')}
     <p class="hint" data-i18n="med.hint"></p>
@@ -135,6 +150,7 @@ export function appTemplate(): string {
           <span class="mono small" id="fileName"></span>
         </div>
         <p class="hint" id="srcStatus"></p>`)}
+      ${section('sess.title', sessionBlock('studio'))}
       ${section('st.toneSection', `<div class="lab-row"><span data-i18n="st.frequency"></span><span class="mono val" id="freqVal"></span></div>
         ${range('freqRange', 0, 1, 0.0005)}
         <div class="freq-tools">

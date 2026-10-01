@@ -146,6 +146,14 @@ export class AudioEngine {
     return this.ctx ? this.master.gain.value : this.targetGain();
   }
 
+  get oscFreq(): number {
+    return this.osc ? this.osc.frequency.value : 0;
+  }
+
+  get toneLevel(): number {
+    return this.ctx ? this.toneGain.gain.value : 0;
+  }
+
   get sampleRate(): number {
     return this.ctx?.sampleRate ?? 48000;
   }
@@ -213,18 +221,32 @@ export class AudioEngine {
   scheduleSessionEnd(inSec: number, fade = 4) {
     const ctx = this.ctx;
     if (!ctx) return;
-    this.cancelSessionEnd();
+    this.cancelSessionEnd(false);
     const now = ctx.currentTime;
     const end = now + Math.max(0.5, inSec);
     const g = this.toneGain.gain;
-    const t0 = Math.max(end - fade, this.fadeInEnd, now);
-    g.cancelScheduledValues(Math.max(now, this.fadeInEnd));
-    g.setValueAtTime(TONE_LEVEL, t0);
-    g.linearRampToValueAtTime(0, Math.max(end, t0 + 0.05));
+    if (now >= this.fadeInEnd) {
+      // settle on the full level first (also undoes a partial fade from an earlier schedule)
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(TONE_LEVEL, Math.min(now + 0.6, end));
+    } else {
+      g.cancelScheduledValues(this.fadeInEnd + 1e-3);
+    }
+    const t0 = Math.max(end - fade, this.fadeInEnd, now + 0.6);
+    if (t0 < end) {
+      g.setValueAtTime(TONE_LEVEL, t0);
+      g.linearRampToValueAtTime(0, end);
+    }
     this.bellNodes = this.bell(end + 0.4);
+    this.gongAt = end + 0.4;
   }
 
-  cancelSessionEnd() {
+  /**
+   * Cancel a scheduled session end (pause / cancel / leaving / duration change):
+   * the gong never sounds, and if the tone keeps playing its level is restored.
+   */
+  cancelSessionEnd(restore = true) {
     for (const o of this.bellNodes) {
       try {
         o.stop();
@@ -234,7 +256,22 @@ export class AudioEngine {
       }
     }
     this.bellNodes = [];
+    if (this.ctx) for (const g of this.gongLog) if (!g.cancelled && g.at > this.ctx.currentTime) g.cancelled = true;
+    this.gongAt = 0;
+    const ctx = this.ctx;
+    if (restore && ctx && this.toneOn) {
+      const g = this.toneGain.gain;
+      const now = ctx.currentTime;
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(TONE_LEVEL, Math.max(this.fadeInEnd, now + 0.6));
+    }
   }
+
+  /** Debug log of gongs (scheduled ctx time, cancelled before sounding?). */
+  gongLog: { at: number; cancelled: boolean }[] = [];
+  /** ctx time at which the scheduled gong will sound (0 = none). */
+  gongAt = 0;
 
   stopTone(fade = 0.15) {
     if (!this.ctx || !this.osc) {
@@ -253,22 +290,37 @@ export class AudioEngine {
     this.toneOn = false;
   }
 
-  /** Short soft bell, used at the end of a meditation (optionally at a future ctx time). */
+  /**
+   * Soft gong (only used when a timer completes): a low, slightly inharmonic
+   * partial set with a gentle mallet attack and a long decay, through the master
+   * volume. Optionally at a future ctx time; returns the nodes so it can be cancelled.
+   */
   bell(at?: number): OscillatorNode[] {
     const ctx = this.ctx;
     if (!ctx) return [];
-    const now = Math.max(ctx.currentTime, at ?? 0);
+    const t = Math.max(ctx.currentTime, at ?? 0);
+    const base = 196;
+    const partials: [number, number, number][] = [
+      // [ratio, peak amplitude, decay seconds]
+      [1, 0.2, 7],
+      [1.0036, 0.1, 7], // slow beating = shimmer
+      [2.01, 0.07, 4.5],
+      [2.76, 0.05, 3.5],
+      [4.07, 0.022, 2.2],
+      [5.43, 0.01, 1.4],
+    ];
     const nodes: OscillatorNode[] = [];
-    for (const [mul, amp] of [[1, 0.25], [2.76, 0.08], [5.4, 0.03]] as const) {
+    this.gongLog.push({ at: t, cancelled: false });
+    for (const [mul, amp, dec] of partials) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
-      o.frequency.value = 528 * mul;
-      g.gain.setValueAtTime(0, now);
-      g.gain.linearRampToValueAtTime(amp, now + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + 4);
+      o.frequency.value = base * mul;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(amp, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
       o.connect(g).connect(this.master);
-      o.start(now);
-      o.stop(now + 4.1);
+      o.start(t);
+      o.stop(t + dec + 0.1);
       nodes.push(o);
     }
     return nodes;

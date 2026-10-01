@@ -8,6 +8,7 @@ import './style.css';
 
 import { AudioEngine } from './audio';
 import { Field, modesFor } from './field';
+import { Glide } from './glide';
 import { applyI18n, setLang, t, type I18nKey } from './i18n';
 import { ICONS } from './icons';
 import { Midi } from './midi';
@@ -15,7 +16,8 @@ import { PHI, clamp, freqToSlider, hz, hzCompact, midiName, midiToFreq, noteInfo
 import { Particles, ratioFor } from './particles';
 import { GEOMETRIES, PRESETS, presetById, type Preset } from './presets';
 import { Renderer } from './renderer';
-import { store, type Mode, type State, type Tab } from './state';
+import { SessionTimer, type SessionScope } from './session';
+import { store, type Mode, type SessionMode, type State, type Tab } from './state';
 import { applyCanvasTheme, applyTheme, getTheme, setTheme, type ThemeMode } from './theme';
 import { renderThumb } from './thumbs';
 import { LN_ADDRESS, appTemplate } from './ui';
@@ -28,6 +30,16 @@ const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
 
 // ---------- boot ----------
 const S = () => store.get();
+const HASH_TAB: Record<string, Tab> = { explorar: 'explore', explore: 'explore', meditar: 'meditate', meditate: 'meditate', estudio: 'studio', studio: 'studio' };
+const tabFromHash = (): Tab | undefined => {
+  try {
+    return HASH_TAB[decodeURIComponent(location.hash.slice(1)).toLowerCase()];
+  } catch {
+    return undefined;
+  }
+};
+// a deep link (#explorar, #meditar, #estudio, #explore …) wins over the Meditate default
+if (tabFromHash()) store.set({ tab: tabFromHash()! });
 setLang(S().lang);
 document.documentElement.lang = S().lang;
 applyCanvasTheme(S().canvasTheme);
@@ -100,7 +112,16 @@ function startPlayback() {
 
 function stopPlayback() {
   const s = S();
-  if (s.medRunning) stopMeditation(false);
+  if (timer.state === 'running') {
+    // pausing from Play/Pause, Space or the lock screen pauses the countdown (no gong)
+    timer.pause();
+    audio.cancelSessionEnd(false);
+  }
+  if (s.medRunning) {
+    medAudioStop(1.2);
+    updateSessionUI();
+    return;
+  }
   if (s.source === 'tone') audio.stopTone(0.2);
   else if (s.source === 'file') audio.pauseFile();
   else audio.stopInputs();
@@ -149,39 +170,158 @@ async function setSource(src: State['source']) {
 function selectPreset(id: string) {
   const p = presetById(id);
   store.set({ presetId: p.id, freq: p.freq, phiPow: 0 });
+  if (S().tab === 'meditate') return; // the glide re-centres smoothly (store reaction)
   if (S().source === 'tone') audio.setFreq(p.freq, 0.08);
   particles.scatter(0.04);
 }
 
-// ---------- meditation ----------
-let medStart = 0;
-let medEnd = 0;
+// ---------- meditation (glide) + shared session timer ----------
+const T0 = performance.now(); // breathing phase origin: the ring breathes from page load
+const glide = new Glide(preset().freq, T0);
+let glideFreq = glide.at(T0);
 let medDone = false;
+let medDoneTimer = 0;
+const timer = new SessionTimer();
 
-function startMeditation() {
-  if (!audio.ensure()) return;
+/** Start the Meditate tone (always the gliding Solfeggio tone). */
+function medAudioStart(): boolean {
+  if (!audio.ensure()) return false;
   audio.stopInputs();
   const p = preset();
   store.set({ source: 'tone', freq: p.freq, phiPow: 0 });
-  audio.startTone(p.freq, 4);
-  medStart = performance.now();
-  medEnd = medStart + S().medDuration * 60000;
+  glideFreq = glide.at(performance.now());
+  audio.startTone(glideFreq, 4);
   medDone = false;
-  // fade-out + bell live on the audio clock, so they're on time even in a hidden tab
-  audio.scheduleSessionEnd(S().medDuration * 60);
   store.set({ medRunning: true, playing: true });
+  return true;
+}
+function medAudioStop(fade = 2.5) {
+  audio.stopTone(fade);
+  store.set({ medRunning: false, playing: false });
 }
 
-function stopMeditation(done: boolean) {
-  if (!done) audio.cancelSessionEnd(); // when done, the bell is already scheduled
-  audio.stopTone(done ? 0.3 : 2.5);
-  medDone = done;
-  store.set({ medRunning: false, playing: false });
-  if (done) {
-    window.setTimeout(() => {
-      medDone = false;
-    }, 8000);
+const sessMode = (sc: SessionScope): SessionMode => (sc === 'meditate' ? S().medMode : S().studioMode);
+const sessDur = (sc: SessionScope): number => (sc === 'meditate' ? S().medDuration : S().studioDuration);
+
+function scopeAudioStart(sc: SessionScope): boolean {
+  if (sc === 'meditate') return medAudioStart();
+  if (!S().playing) startPlayback();
+  return S().playing;
+}
+function scopeAudioStop(sc: SessionScope) {
+  if (sc === 'meditate') medAudioStop();
+  else if (S().playing) stopPlayback();
+}
+
+/** Put the end (fade + gong) on the audio clock when the tone is the source; others end from the UI clock. */
+function scheduleTimerEnd() {
+  const left = timer.left();
+  if (left == null) return;
+  if (S().source === 'tone' && audio.ctx) audio.scheduleSessionEnd(left / 1000);
+}
+
+function timerStart(sc: SessionScope) {
+  if (timer.active() && timer.scope !== sc) timerCancel(false);
+  if (!scopeAudioStart(sc)) return;
+  timer.start(sc, sessDur(sc));
+  scheduleTimerEnd();
+  refreshSession();
+}
+function timerPause() {
+  if (timer.state !== 'running') return;
+  const sc = timer.scope!;
+  timer.pause();
+  audio.cancelSessionEnd(false);
+  scopeAudioStop(sc);
+  refreshSession();
+}
+function timerResume() {
+  if (timer.state !== 'paused') return;
+  const sc = timer.scope!;
+  if (!scopeAudioStart(sc)) return;
+  timer.resume();
+  scheduleTimerEnd();
+  refreshSession();
+}
+/** Cancel silently (never a gong). stopAudio=false keeps the sound playing (continuous). */
+function timerCancel(stopAudio: boolean) {
+  if (!timer.active()) return;
+  const sc = timer.scope!;
+  timer.cancel();
+  audio.cancelSessionEnd(!stopAudio);
+  if (stopAudio) scopeAudioStop(sc);
+  refreshSession();
+}
+/** Timer reached its end: the only place a gong is allowed. */
+function timerComplete() {
+  const sc = timer.scope;
+  timer.cancel();
+  const ctx = audio.ctx;
+  const gongScheduled = !!ctx && audio.gongAt > 0 && audio.gongAt - ctx.currentTime < 1.5;
+  if (!gongScheduled) {
+    // non-tone source, or the audio clock lagged (suspended context): gong now
+    audio.cancelSessionEnd(false);
+    if (sc === 'meditate' || S().source === 'tone') audio.stopTone(1.5);
+    audio.bell();
   }
+  if (sc === 'meditate') {
+    if (gongScheduled) audio.stopTone(0.3); // already faded out on the audio clock
+    store.set({ medRunning: false, playing: false });
+    medDone = true;
+    clearTimeout(medDoneTimer);
+    medDoneTimer = window.setTimeout(() => (medDone = false), 8000);
+  } else {
+    if (S().source === 'tone') {
+      if (gongScheduled) audio.stopTone(0.3);
+      store.set({ playing: false });
+    } else if (S().playing) stopPlayback();
+  }
+  refreshSession();
+}
+
+/** Primary button of Meditate / Studio: play-pause (continuous) or start-pause-resume (timer). */
+function sessionPrimary(sc: SessionScope) {
+  if (sessMode(sc) === 'continuous') {
+    if (sc === 'meditate') S().medRunning ? medAudioStop() : medAudioStart();
+    else togglePlay();
+    return;
+  }
+  if (timer.scope === sc && timer.state === 'running') timerPause();
+  else if (timer.scope === sc && timer.state === 'paused') timerResume();
+  else timerStart(sc);
+}
+
+function setSessionMode(sc: SessionScope, mode: SessionMode) {
+  if (sc === 'meditate') store.set({ medMode: mode });
+  else store.set({ studioMode: mode });
+  if (mode === 'continuous') timerCancel(false); // keep playing, no countdown, no gong
+  else {
+    const playingHere = sc === 'meditate' ? S().medRunning : S().playing;
+    if (playingHere && !timer.active()) {
+      timer.start(sc, sessDur(sc)); // already listening: the countdown starts now
+      scheduleTimerEnd();
+    }
+  }
+  refreshSession();
+}
+
+function setSessionDur(sc: SessionScope, d: 5 | 10 | 20) {
+  if (sc === 'meditate') store.set({ medDuration: d });
+  else store.set({ studioDuration: d });
+  if (timer.scope === sc && timer.active()) {
+    // restart the countdown with the new length; never a gong
+    const wasRunning = timer.state === 'running';
+    audio.cancelSessionEnd(true);
+    timer.start(sc, d);
+    if (wasRunning) scheduleTimerEnd();
+    else timer.pause();
+  }
+  refreshSession();
+}
+
+function refreshSession() {
+  updatePlayUI();
+  updateSessionUI();
 }
 
 // ---------- analysis state ----------
@@ -341,8 +481,22 @@ function updatePlayUI() {
   sb.querySelector('.lbl')!.textContent = t(s.playing ? 'st.pauseSound' : 'st.playSound');
   sb.classList.toggle('on', s.playing);
   $('#tapHint').classList.toggle('hide', s.playing);
-  $('#medBtn').textContent = t(s.medRunning ? 'med.stop' : 'med.start');
-  $('#medBtn').classList.toggle('on', s.medRunning);
+  const mb = $('#medBtn');
+  if (s.medMode === 'timer') {
+    const st = timer.scope === 'meditate' ? timer.state : 'idle';
+    mb.textContent = t(st === 'running' ? 'sess.pause' : st === 'paused' ? 'sess.resume' : 'med.start');
+    mb.classList.toggle('on', st === 'running');
+  } else {
+    mb.textContent = t(s.medRunning ? 'med.pause' : 'med.start');
+    mb.classList.toggle('on', s.medRunning);
+  }
+  if (s.studioMode === 'timer') {
+    const st = timer.scope === 'studio' ? timer.state : 'idle';
+    sb.querySelector('.ico')!.innerHTML = st === 'running' ? ICONS.pause : ICONS.play;
+    sb.querySelector('.lbl')!.textContent = t(st === 'running' ? 'sess.pause' : st === 'paused' ? 'sess.resume' : 'sess.start');
+    sb.classList.toggle('on', st === 'running');
+  }
+  updateMedHint();
 }
 
 function updateSourceUI() {
@@ -379,7 +533,7 @@ function updateStudioValues() {
   setSeg('#modeSeg2', 'mode', s.mode);
   setSeg('#densSeg', 'dens', s.density);
   setSeg('#waveSeg', 'wave', s.waveform);
-  setSeg('#durSeg', 'dur', String(s.medDuration));
+  updateSessionUI();
   setSeg('#canvasSeg', 'canvas', s.canvasTheme);
   $$('.subtabs [data-sub]').forEach((b) => b.classList.toggle('on', b.dataset.sub === s.studioSub));
   $$('.pane').forEach((p) => p.classList.toggle('on', p.dataset.pane === s.studioSub));
@@ -388,6 +542,92 @@ function updateStudioValues() {
     .forEach((c) => c.classList.toggle('on', c.dataset.cat === s.category));
   $('.panel[data-view="explore"]').classList.toggle('collapsed', s.panelCollapsed);
   $('#collapseBtn').setAttribute('aria-expanded', String(!s.panelCollapsed));
+}
+
+// ---------- session UI (shared) ----------
+function updateSessionUI() {
+  const now = performance.now();
+  $$('.sess').forEach((blk) => {
+    const sc = blk.dataset.scope as SessionScope;
+    const mode = sessMode(sc);
+    blk.classList.toggle('timer', mode === 'timer');
+    $$('[data-smode]', blk).forEach((b) => {
+      const on = b.dataset.smode === mode;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    $$('[data-sdur]', blk).forEach((b) => {
+      const on = Number(b.dataset.sdur) === sessDur(sc);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    const mine = timer.scope === sc && timer.active();
+    blk.dataset.state = mine ? timer.state : 'idle';
+    $('.sess-cancel', blk).hidden = !mine;
+    $('.sess-clock', blk).textContent = fmtTime(mine ? timer.left(now)! : sessDur(sc) * 60000);
+  });
+}
+
+// ---------- first-gesture autoplay (Meditate entry) ----------
+// Visuals flow from load; sound starts on the first real user gesture anywhere
+// (no AudioContext before it). Armed until audio has started once.
+let autoArmed = true;
+function updateMedHint() {
+  const show = autoArmed && S().tab === 'meditate' && !S().playing;
+  const h = $('#medHint');
+  h.classList.toggle('show', show);
+  $('#medHintTxt').textContent = show ? t(coarse ? 'med.tapAnywhere' : 'med.clickAnywhere') : '';
+}
+function onFirstGesture(e: Event) {
+  if (!autoArmed) return;
+  const s = S();
+  if (s.tab !== 'meditate' || s.playing) return;
+  const tgt = e.target as Element | null;
+  // controls that manage sound themselves, or navigate away, don't double-trigger
+  if (tgt?.closest?.('#medBtn, .sess, .tab:not([data-tab="meditate"]), .dn-modal, #helpModal')) return;
+  if (e instanceof KeyboardEvent) {
+    if (e.key === ' ' || e.key === 'Tab' || e.key === 'Escape' || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (['1', '3', '?', 'Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+  }
+  // a touch pointerdown isn't a user activation yet: wait for touchend/click
+  const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+  if (ua && !ua.isActive) return;
+  autoArmed = false;
+  sessionPrimary('meditate'); // Continuous: just plays + glides; Timer: starts the countdown
+  updateMedHint();
+}
+for (const ev of ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const) window.addEventListener(ev, onFirstGesture, { capture: true });
+
+// ---------- tabs: deep links (#explorar #meditar #estudio / #explore #meditate #studio) ----------
+const TAB_HASH: Record<'es' | 'en', Record<Tab, string>> = {
+  es: { explore: 'explorar', meditate: 'meditar', studio: 'estudio' },
+  en: { explore: 'explore', meditate: 'meditate', studio: 'studio' },
+};
+/** Explicit navigation: switch tab and reflect it in the URL (so reload/deep links keep it). */
+function goTab(tab: Tab) {
+  store.set({ tab });
+  const h = `#${TAB_HASH[S().lang][tab]}`;
+  if (location.hash !== h) history.replaceState(null, '', h);
+}
+window.addEventListener('hashchange', () => {
+  const tab = tabFromHash();
+  if (tab) store.set({ tab });
+});
+
+/** Leaving a tab cancels its timer silently (no gong). Meditate's glide only runs in Meditate. */
+let curTab: Tab = S().tab;
+function onTabChange(prev: Tab, next: Tab) {
+  if (timer.scope === prev && timer.active()) timerCancel(false);
+  if (prev === 'meditate' && S().medRunning) {
+    // keep listening as a normal tone at the Explore/Studio frequency
+    store.set({ medRunning: false });
+    audio.setFreq(S().freq, 0.6);
+  }
+  if (next === 'meditate' && S().playing && S().source === 'tone') {
+    // a tone that's already playing joins the meditation glide
+    store.set({ medRunning: true });
+  }
+  refreshSession();
 }
 
 // ---------- volume ----------
@@ -468,7 +708,7 @@ function renderAll() {
 // ---------- events ----------
 $$('.tab').forEach((b) =>
   b.addEventListener('click', () => {
-    store.set({ tab: b.dataset.tab as Tab });
+    goTab(b.dataset.tab as Tab);
     window.scrollTo({ top: 0 });
   }),
 );
@@ -595,20 +835,18 @@ $('#tapHint').addEventListener('click', () => {
   }
   startPlayback();
 });
-$('#soundBtn').addEventListener('click', () => togglePlay());
+$('#soundBtn').addEventListener('click', () => sessionPrimary('studio'));
 
 // meditate
 $<HTMLSelectElement>('#medPreset').addEventListener('change', (e) => selectPreset((e.target as HTMLSelectElement).value));
-$$('#durSeg [data-dur]').forEach((b) =>
-  b.addEventListener('click', () => {
-    store.set({ medDuration: Number(b.dataset.dur) as State['medDuration'] });
-    if (S().medRunning) {
-      medEnd = medStart + S().medDuration * 60000;
-      audio.scheduleSessionEnd((medEnd - performance.now()) / 1000);
-    }
-  }),
-);
-$('#medBtn').addEventListener('click', () => (S().medRunning ? stopMeditation(false) : startMeditation()));
+$('#medBtn').addEventListener('click', () => sessionPrimary('meditate'));
+// shared session blocks (Meditate + Studio)
+$$('.sess').forEach((blk) => {
+  const sc = blk.dataset.scope as SessionScope;
+  $$('[data-smode]', blk).forEach((b) => b.addEventListener('click', () => setSessionMode(sc, b.dataset.smode as SessionMode)));
+  $$('[data-sdur]', blk).forEach((b) => b.addEventListener('click', () => setSessionDur(sc, Number(b.dataset.sdur) as 5 | 10 | 20)));
+  $('.sess-cancel', blk).addEventListener('click', () => timerCancel(true));
+});
 
 // studio
 $$('.subtabs [data-sub]').forEach((b) => b.addEventListener('click', () => store.set({ studioSub: b.dataset.sub as State['studioSub'] })));
@@ -736,11 +974,11 @@ window.addEventListener('keydown', (e) => {
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === ' ' && tgt.tagName !== 'BUTTON') {
     e.preventDefault();
-    if (S().tab === 'meditate') S().medRunning ? stopMeditation(false) : startMeditation();
-    else togglePlay();
-  } else if (e.key === '1') store.set({ tab: 'explore' });
-  else if (e.key === '2') store.set({ tab: 'meditate' });
-  else if (e.key === '3') store.set({ tab: 'studio' });
+    if (S().tab === 'explore') togglePlay();
+    else sessionPrimary(S().tab as SessionScope);
+  } else if (e.key === '1') goTab('explore');
+  else if (e.key === '2') goTab('meditate');
+  else if (e.key === '3') goTab('studio');
   else if (e.key === '?') openHelp();
   else if (e.key === 'd' || e.key === 'D') switchTheme();
 });
@@ -760,10 +998,15 @@ audio.onStateChange = (state) => {
   updateMediaSession();
 };
 
-// keep the meditation UI honest even while rAF is paused in a hidden tab
+// Glide driver + timer check. Runs on a timer (not rAF) so the oscillator keeps
+// gliding and timers complete while the tab is hidden (audible tabs aren't throttled).
 window.setInterval(() => {
-  if (S().medRunning && performance.now() >= medEnd) stopMeditation(true);
-}, 1000);
+  const now = performance.now();
+  glideFreq = glide.at(now);
+  // aim slightly ahead so the smoothed oscillator stays on the visual curve
+  if (S().medRunning && S().tab === 'meditate') audio.setFreq(glide.at(now + 350), 0.25);
+  if (timer.due(now)) timerComplete();
+}, 200);
 
 // ---------- Media Session (lock screen / notification controls) ----------
 const ms = 'mediaSession' in navigator ? navigator.mediaSession : null;
@@ -803,8 +1046,9 @@ if (ms) {
   // these only fire after the user has started audio at least once (no autoplay)
   set('play', () => {
     if (S().playing) return;
-    if (S().tab === 'meditate') startMeditation();
-    else startPlayback();
+    const tab = S().tab;
+    if (tab === 'explore') startPlayback();
+    else sessionPrimary(tab);
   });
   set('pause', () => {
     if (S().playing) stopPlayback();
@@ -830,13 +1074,23 @@ store.on((s, ch) => {
     buildThumbs();
   }
   if (ch.has('category')) buildThumbs();
-  if (ch.has('presetId')) markThumbs(!ch.has('category'));
+  if (ch.has('presetId')) {
+    markThumbs(!ch.has('category'));
+    glide.setCenter(presetById(s.presetId).freq, performance.now());
+  }
+  if (ch.has('tab')) {
+    const prev = curTab;
+    curTab = s.tab;
+    if (prev !== s.tab) onTabChange(prev, s.tab);
+  }
+  if (['medMode', 'studioMode', 'medDuration', 'studioDuration', 'tab'].some((k) => ch.has(k as keyof State))) updatePlayUI();
   if (ch.has('tab') || ch.has('lang')) updateHeader();
   if (['presetId', 'freq', 'tuning', 'lang'].some((k) => ch.has(k as keyof State))) updatePresetInfo();
   if (['playing', 'medRunning', 'lang'].some((k) => ch.has(k as keyof State))) updatePlayUI();
   if (['source', 'playing', 'lang'].some((k) => ch.has(k as keyof State))) updateSourceUI();
   if (ch.has('lang')) updateMidiUI();
   if (ch.has('playing')) audio.wantRunning = s.playing;
+  if (ch.has('playing') && s.playing) autoArmed = false; // sound has started once: no more auto-start
   if (['playing', 'presetId', 'freq', 'lang', 'source'].some((k) => ch.has(k as keyof State))) updateMediaSession();
   updateStudioValues();
   if (['mode', 'showRings', 'presetId', 'overlay', 'tab'].some((k) => ch.has(k as keyof State))) refreshCanvasStatic();
@@ -854,7 +1108,7 @@ renderer.pointScale = S().pointSize;
 
 function breath(now: number): { s: number; inhale: boolean } {
   const T = 5.5;
-  const tt = (((now - medStart) / 1000) % (2 * T) + 2 * T) % (2 * T);
+  const tt = (((now - T0) / 1000) % (2 * T) + 2 * T) % (2 * T);
   const ease = (x: number) => 0.5 - 0.5 * Math.cos(Math.PI * x);
   return tt < T ? { s: ease(tt / T), inhale: true } : { s: 1 - ease((tt - T) / T), inhale: false };
 }
@@ -876,6 +1130,7 @@ function frame(now: number) {
 
   // frequency driving the visuals
   let target = s.freq;
+  if (s.tab === 'meditate' && s.source === 'tone') target = glideFreq = glide.at(now);
   if (s.source !== 'tone') target = detected ?? vizFreq;
   if (s.source === 'tone' || Math.abs(Math.log2(target / vizFreq)) > 1 / 12) vizFreq = target;
   else vizFreq = Math.pow(2, Math.log2(vizFreq) + (Math.log2(target) - Math.log2(vizFreq)) * Math.min(1, 0.15 * k));
@@ -885,8 +1140,8 @@ function frame(now: number) {
   if (s.source !== 'tone' && s.playing) energy = clamp((level + 65) / 40, 0.15, 1.2);
   let br = { s: 0.5, inhale: true };
   if (s.tab === 'meditate') {
-    br = s.medRunning ? breath(now) : { s: 0.45 + 0.05 * Math.sin(now / 1400), inhale: true };
-    if (s.medRunning) energy *= 0.65 + 0.35 * br.s;
+    br = breath(now); // the ring breathes in both modes, with or without sound
+    energy = (s.medRunning ? 1 : 0.75) * (0.65 + 0.35 * br.s);
   }
 
   const md = modesFor(vizFreq);
@@ -913,15 +1168,10 @@ function frame(now: number) {
   if (s.tab === 'meditate') {
     const ring = $('#medRing');
     ring.style.transform = `translate(-50%,-50%) scale(${(0.42 + 0.5 * br.s).toFixed(4)})`;
-    if (s.medRunning) {
-      const left = medEnd - now;
-      if (left <= 0) stopMeditation(true);
-      $('#medTxt').textContent = t(br.inhale ? 'med.inhale' : 'med.exhale');
-      $('#medTime').textContent = fmtTime(left);
-    } else {
-      $('#medTxt').textContent = t(medDone ? 'med.done' : 'med.breathe');
-      $('#medTime').textContent = fmtTime(s.medDuration * 60000);
-    }
+    if (timer.due(now)) timerComplete();
+    $('#medTxt').textContent = t(medDone ? 'med.done' : br.inhale ? 'med.inhale' : 'med.exhale');
+    const left = timer.scope === 'meditate' ? timer.left(now) : null;
+    $('#medTime').textContent = s.medMode === 'timer' ? fmtTime(left ?? s.medDuration * 60000) : hz(glideFreq);
   }
 
   // throttled DOM readouts
@@ -949,6 +1199,11 @@ function frame(now: number) {
 
 function updateReadouts(md: ReturnType<typeof modesFor>) {
   const s = S();
+  if (s.tab === 'meditate') {
+    const gn = noteInfo(glideFreq, s.tuning, s.lang);
+    $('#medDetail').textContent = `${presetName(preset())} · ${hz(glideFreq)} · ${gn.label}`;
+  }
+  if (timer.active()) updateSessionUI();
   const n = noteInfo(vizFreq, s.tuning, s.lang);
   if (s.tab === 'studio') {
     const mult = s.phiPow && s.source === 'tone' ? `  × ${Math.pow(PHI, s.phiPow).toFixed(4)}` : '';
@@ -1081,6 +1336,36 @@ requestAnimationFrame(frame);
       playing: S().playing,
       mediaSession: ms ? { state: ms.playbackState, title: ms.metadata?.title, artist: ms.metadata?.artist, album: ms.metadata?.album } : null,
     };
+  },
+  session() {
+    const ctx = audio.ctx;
+    return {
+      tab: S().tab,
+      hash: location.hash,
+      medMode: S().medMode,
+      studioMode: S().studioMode,
+      medDuration: S().medDuration,
+      studioDuration: S().studioDuration,
+      timer: { scope: timer.scope, state: timer.state, left: timer.left() },
+      medRunning: S().medRunning,
+      playing: S().playing,
+      glideFreq,
+      glideTarget: glide.target,
+      oscFreq: audio.oscFreq,
+      vizFreq,
+      autoArmed,
+      hint: document.querySelector('#medHint')?.classList.contains('show') ?? false,
+      gongs: audio.gongLog.map((g) => ({ at: +g.at.toFixed(2), cancelled: g.cancelled, sounded: !g.cancelled && !!ctx && g.at <= ctx.currentTime })),
+      ctxTime: ctx?.currentTime ?? 0,
+      toneGain: audio.toneLevel,
+    };
+  },
+  /** test hook: make the running timer end in `ms` (re-schedules the audio-clock end). */
+  fastForward(ms: number) {
+    if (!timer.active()) return false;
+    timer.setLeft(ms);
+    if (timer.state === 'running') scheduleTimerEnd();
+    return true;
   },
   sample() {
     return { pos: Array.from(particles.pos.slice(0, 6)), br: Array.from(particles.bright.slice(0, 3)), px: renderer.px, f: Array.from(field.f.slice(0, 3)) };

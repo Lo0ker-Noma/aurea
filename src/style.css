@@ -1626,3 +1626,125 @@ body.dn-lock {
     padding: 2px;
   }
 }
+
+/* ---- Session: Continuous / Timer (shared by Meditate and Studio) -------------------- */
+.sess {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sess-timer {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.sess.timer .sess-timer {
+  display: flex;
+}
+.sess-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+}
+.sess-clock {
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.sess[data-state='running'] .sess-clock {
+  color: var(--ink);
+}
+.sess[data-state='paused'] .sess-clock {
+  color: var(--ink);
+  animation: sess-blink 1.6s ease-in-out infinite;
+}
+@keyframes sess-blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+.sess-cancel {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.sess-cancel:hover {
+  border-color: var(--line-strong);
+}
+.sess-cancel[hidden] {
+  display: none;
+}
+.sec .sess {
+  margin-top: 2px;
+}
+
+/* ---- Meditate: "tap anywhere to listen" hint ---------------------------------------- */
+.med-hint {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 18px;
+  display: none;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px 7px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--stage-fg);
+  background: rgba(20, 24, 26, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+body[data-tab='meditate'] .med-hint {
+  display: flex;
+}
+.med-hint.show {
+  opacity: 0.92;
+  transform: translate(-50%, 0);
+}
+:root[data-canvas='light'] .med-hint {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(38, 44, 46, 0.08);
+}
+.med-hint-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: med-hint-pulse 2.4s ease-in-out infinite;
+}
+@keyframes med-hint-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .med-hint-dot,
+  .sess[data-state='paused'] .sess-clock {
+    animation: none;
+  }
+}

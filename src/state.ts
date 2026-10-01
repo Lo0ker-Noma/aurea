@@ -4,6 +4,7 @@ import { DEFAULT_CANVAS, type CanvasTheme } from './theme';
 
 export type Lang = 'es' | 'en';
 export type Tab = 'explore' | 'meditate' | 'studio';
+export type SessionMode = 'continuous' | 'timer';
 export type Mode = 'chladni' | 'water' | 'mandala' | 'xy';
 export type Source = 'tone' | 'mic' | 'file';
 export type StudioSub = 'shape' | 'sound' | 'analysis' | 'output' | 'midi';
@@ -30,6 +31,9 @@ export interface State {
   muted: boolean;
   waveform: Waveform;
   studioSub: StudioSub;
+  medMode: SessionMode;
+  studioMode: SessionMode;
+  studioDuration: 5 | 10 | 20;
   medDuration: 5 | 10 | 20;
   medRunning: boolean;
   rangeLo: number;
@@ -44,7 +48,7 @@ export interface State {
 const KEY = 'aurea:v1';
 const PERSIST: (keyof State)[] = [
   'lang', 'presetId', 'category', 'mode', 'freq', 'tuning', 'overlay', 'showRings', 'density',
-  'pointSize', 'volume', 'muted', 'waveform', 'medDuration', 'rangeLo', 'rangeHi', 'sensitivity', 'panelCollapsed', 'studioSub',
+  'pointSize', 'volume', 'muted', 'waveform', 'medDuration', 'medMode', 'studioMode', 'studioDuration', 'rangeLo', 'rangeHi', 'sensitivity', 'panelCollapsed', 'studioSub',
   'exportGeo', 'exportCaption', 'canvasTheme',
 ];
 
@@ -52,7 +56,7 @@ function defaults(): State {
   const p = presetById('tree');
   return {
     lang: 'es',
-    tab: 'explore',
+    tab: 'meditate', // direct loads open in Meditate (deep links via #explorar / #estudio)
     presetId: p.id,
     category: p.cat,
     mode: 'chladni',
@@ -70,6 +74,9 @@ function defaults(): State {
     waveform: 'sine',
     studioSub: 'sound',
     medDuration: 5,
+    medMode: 'continuous',
+    studioMode: 'continuous',
+    studioDuration: 5,
     medRunning: false,
     rangeLo: 60,
     rangeHi: 2600,
@@ -98,6 +105,9 @@ function load(): State {
   if (s.lang !== 'es' && s.lang !== 'en') s.lang = 'es';
   if (s.tuning !== 440 && s.tuning !== 432) s.tuning = 440;
   if (![5, 10, 20].includes(s.medDuration)) s.medDuration = 5;
+  if (![5, 10, 20].includes(s.studioDuration)) s.studioDuration = 5;
+  if (s.medMode !== 'timer') s.medMode = 'continuous';
+  if (s.studioMode !== 'timer') s.studioMode = 'continuous';
   if (!isFinite(s.volume) || s.volume < 0 || s.volume > 1) s.volume = 0.6;
   if (s.canvasTheme !== 'dark' && s.canvasTheme !== 'light') s.canvasTheme = DEFAULT_CANVAS;
   if (!isFinite(s.freq) || s.freq < 20 || s.freq > 4000) s.freq = presetById(s.presetId).freq;
